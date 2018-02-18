@@ -28,6 +28,7 @@ public class BinanceStreamingMarketDataService implements StreamingMarketDataSer
 
     private final BinanceStreamingService service;
     private final Map<CurrencyPair, OrderBook> orderbooks = new HashMap<>();
+    //private final Map<CurrencyPair, OrderBook> orderbooks = new ConcurrentHashMap<>();
 
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -35,7 +36,7 @@ public class BinanceStreamingMarketDataService implements StreamingMarketDataSer
         this.service = service;
         mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     }
-
+    
     @Override
     public Observable<OrderBook> getOrderBook(CurrencyPair currencyPair, Object... args) {
         return service.subscribeChannel(currencyPair, args)
