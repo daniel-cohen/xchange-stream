@@ -14,6 +14,7 @@ public class DepthBinanceWebSocketTransaction extends ProductBinanceWebSocketTra
             @JsonProperty("E") String eventTime,
             @JsonProperty("s") String symbol,
             @JsonProperty("u") long lastUpdateId,
+            @JsonProperty("U") long firstUpdateId,
             @JsonProperty("b") List<Object[]> _bids,
             @JsonProperty("a") List<Object[]> _asks
     ) {

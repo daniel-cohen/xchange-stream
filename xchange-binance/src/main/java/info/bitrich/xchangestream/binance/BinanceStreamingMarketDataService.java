@@ -11,8 +11,11 @@ import info.bitrich.xchangestream.core.ProductSubscription;
 import info.bitrich.xchangestream.core.StreamingMarketDataService;
 import io.reactivex.Observable;
 import io.reactivex.functions.Consumer;
+import io.reactivex.schedulers.Schedulers;
+
 import org.knowm.xchange.binance.dto.marketdata.BinanceOrderbook;
 import org.knowm.xchange.binance.dto.marketdata.BinanceTicker24h;
+import org.knowm.xchange.binance.service.BinanceMarketDataService;
 import org.knowm.xchange.currency.CurrencyPair;
 import org.knowm.xchange.dto.Order.OrderType;
 import org.knowm.xchange.dto.marketdata.OrderBook;
@@ -28,6 +31,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.Callable;
 
 import static info.bitrich.xchangestream.binance.dto.BaseBinanceWebSocketTransaction.BinanceWebSocketTypes.*;
 
@@ -42,9 +46,15 @@ public class BinanceStreamingMarketDataService implements StreamingMarketDataSer
     private final Map<CurrencyPair, Observable<OrderBook>> orderbookSubscriptions = new HashMap<>();
     private final ObjectMapper mapper = new ObjectMapper();
 
+    private BinanceMarketDataService marketDataService;
 
     public BinanceStreamingMarketDataService(BinanceStreamingService service) {
+      this(service, null);
+    }
+
+    public BinanceStreamingMarketDataService(BinanceStreamingService service, org.knowm.xchange.binance.service.BinanceMarketDataService marketDataService) {
         this.service = service;
+        this.marketDataService = marketDataService;
         mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     }
     
@@ -130,8 +140,12 @@ public class BinanceStreamingMarketDataService implements StreamingMarketDataSer
                             key,
                             depth.getEventTime(),
                             value)));
+                    
+                    LOG.info("Mapped income transaction object");
                     return currentOrderBook;
-                });
+                })
+                .skip(1) // Skipping at least one event so I know for sure we're not making the full order book request prematurely  
+                .skipUntil(InitializeOrderBook(currencyPair));
     }
 
     /** Force observable to execute its body, this way we get `BinanceStreamingService` to register the observables emitter
@@ -156,6 +170,42 @@ public class BinanceStreamingMarketDataService implements StreamingMarketDataSer
         } catch (IOException e) {
           throw new ExchangeException("Unable to parse order book transaction", e);
         }
+    }
+    
+    private Observable<Long> TimeInitializeOrderBook(CurrencyPair currencyPair) {
+      Observable<Long> oSkip = Observable.fromCallable(new Callable<Long>() {
+        @Override
+        public Long call() throws Exception {
+          LOG.info("Going to sleep for 10 secs");
+          Thread.sleep(10000);
+          LOG.info("Woke up!");
+           return 0L;
+        }
+      }).subscribeOn(Schedulers.newThread());
+      
+      return oSkip;
+    }
+    
+    private Observable<Long> InitializeOrderBook(CurrencyPair currencyPair) {
+      if (marketDataService == null) {
+        //Don't skip anything:
+        return Observable.just(1L);
+      }
+      
+      Observable<Long> oSkip = Observable.fromCallable(new Callable<Long>() {
+        @Override
+        public Long call() throws Exception {
+          LOG.info("Making reuqest for full orderbook:");
+          long startTime = System.nanoTime();
+          BinanceOrderbook ob = marketDataService.getBinanceOrderbook(currencyPair, null);
+          long endTime = System.nanoTime();
+          
+          LOG.info(String.format("Received order bookwith last update id: %d Duration %dms", ob.lastUpdateId, (endTime - startTime)/1000000 ));
+          return 0L;
+        }
+      }).subscribeOn(Schedulers.newThread());
+      
+      return oSkip;
     }
 
 }

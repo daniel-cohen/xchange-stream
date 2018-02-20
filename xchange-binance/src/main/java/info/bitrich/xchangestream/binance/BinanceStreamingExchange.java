@@ -35,8 +35,10 @@ public class BinanceStreamingExchange extends BinanceExchange implements Streami
         }
 
         ProductSubscription subscriptions = args[0];
+        
         streamingService = createStreamingService(subscriptions);
-        streamingMarketDataService = new BinanceStreamingMarketDataService(streamingService);
+        streamingMarketDataService = new BinanceStreamingMarketDataService(streamingService, 
+                                                                            (org.knowm.xchange.binance.service.BinanceMarketDataService)marketDataService);
         return streamingService.connect()
                 .doOnComplete(() -> streamingMarketDataService.openSubscriptions(subscriptions));
     }
