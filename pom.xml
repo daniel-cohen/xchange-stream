@@ -26,7 +26,8 @@
         <module>xchange-gemini</module>
         <module>xchange-wex</module>
         <module>xchange-binance</module>
-    </modules>
+        <module>xchange-btcmarkets</module>
+  </modules>
 
     <name>xchange-stream</name>
     <description>
@@ -72,7 +73,7 @@
         <!-- For XChange SNAPSHOT dependency -->
         <repository>
             <id>sonatype-oss-snapshot</id>
-            <snapshots />
+            <snapshots/>
             <url>https://oss.sonatype.org/content/repositories/snapshots</url>
         </repository>
     </repositories>
