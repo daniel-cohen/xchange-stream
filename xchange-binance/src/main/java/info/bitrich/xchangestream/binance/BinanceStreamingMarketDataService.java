@@ -207,6 +207,17 @@ public class BinanceStreamingMarketDataService implements StreamingMarketDataSer
         // Now process the buffered websocket data in the buffer (and empty the buffer):
         while(prevTransaction != null) {
           if (prevTransaction.getOrderBook().lastUpdateId > initialOrderbook.lastUpdateId){
+            //TODO: -----------------------------------------STILL HAVE TO VERIFY ----------------------------------------------------------------------------------------
+            //TODO: -----------------------------------------STILL HAVE TO VERIFY ----------------------------------------------------------------------------------------
+            //TODO: -----------------------------------------STILL HAVE TO VERIFY ----------------------------------------------------------------------------------------
+            //TODO: -----------------------------------------STILL HAVE TO VERIFY ----------------------------------------------------------------------------------------
+            //The first processed should have U <= lastUpdateId+1 AND u >= lastUpdateId+1
+            //TODO: -----------------------------------------STILL HAVE TO VERIFY ----------------------------------------------------------------------------------------
+            //TODO: -----------------------------------------STILL HAVE TO VERIFY ----------------------------------------------------------------------------------------
+            //TODO: -----------------------------------------STILL HAVE TO VERIFY ----------------------------------------------------------------------------------------
+            //TODO: -----------------------------------------STILL HAVE TO VERIFY ----------------------------------------------------------------------------------------
+            
+            
             LOG.info("Updating orderbook with transaction with: Currency:{} lastUpdateId:{}: ", prevTransaction.getCurrencyPair(), prevTransaction.getOrderBook().lastUpdateId);
             UpdateOrderBook(currentOrderBook, prevTransaction);
             
