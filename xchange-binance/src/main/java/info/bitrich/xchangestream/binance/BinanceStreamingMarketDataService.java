@@ -80,7 +80,7 @@ public class BinanceStreamingMarketDataService implements StreamingMarketDataSer
               new BiFunction<BinanceWebsocketTransaction<DepthBinanceWebSocketTransaction>, CurrencyPair, OrderBook>() {
                     @Override
                     public OrderBook apply(BinanceWebsocketTransaction<DepthBinanceWebSocketTransaction> transaction, CurrencyPair currencypair) throws IOException {
-                        return NoInitMapFunction(transaction, currencypair);
+                        return uninitializedOrderbookMapFunction(transaction, currencypair);
                      }
               };
         } else {
@@ -88,7 +88,7 @@ public class BinanceStreamingMarketDataService implements StreamingMarketDataSer
               new BiFunction<BinanceWebsocketTransaction<DepthBinanceWebSocketTransaction>, CurrencyPair, OrderBook>() {
                     @Override
                     public OrderBook apply(BinanceWebsocketTransaction<DepthBinanceWebSocketTransaction> transaction, CurrencyPair currencypair) throws IOException {
-                        return MapFunction(transaction, currencypair);
+                        return initializedOrderbookMapFunction(transaction, currencypair);
                      }
               };
         }
@@ -149,7 +149,7 @@ public class BinanceStreamingMarketDataService implements StreamingMarketDataSer
                 .map(transaction -> transaction.getData().getTicker());
     }
 
-    OrderBook NoInitMapFunction(BinanceWebsocketTransaction<DepthBinanceWebSocketTransaction> transaction, CurrencyPair currencyPair) {
+    private OrderBook uninitializedOrderbookMapFunction(BinanceWebsocketTransaction<DepthBinanceWebSocketTransaction> transaction, CurrencyPair currencyPair) {
       DepthBinanceWebSocketTransaction depth = transaction.getData();
 
       OrderBook currentOrderBook = orderbooks.computeIfAbsent(currencyPair, orderBook ->
@@ -160,7 +160,7 @@ public class BinanceStreamingMarketDataService implements StreamingMarketDataSer
       return currentOrderBook;
     }
     
-    OrderBook MapFunction(BinanceWebsocketTransaction<DepthBinanceWebSocketTransaction> transaction, CurrencyPair currencyPair) throws IOException {
+    private OrderBook initializedOrderbookMapFunction(BinanceWebsocketTransaction<DepthBinanceWebSocketTransaction> transaction, CurrencyPair currencyPair) throws IOException {
       DepthBinanceWebSocketTransaction currentTransaction = transaction.getData();
       LOG.info("Mapping incoming transaction with: Currency:{} lastUpdateId:{}: ", currentTransaction.getCurrencyPair(), currentTransaction.getOrderBook().lastUpdateId);
       
@@ -236,15 +236,13 @@ public class BinanceStreamingMarketDataService implements StreamingMarketDataSer
                         AbstractMap.SimpleEntry<BinanceWebsocketTransaction<DepthBinanceWebSocketTransaction>, BinanceWebsocketTransaction<DepthBinanceWebSocketTransaction>>, 
                         BinanceWebsocketTransaction<DepthBinanceWebSocketTransaction>, 
                         AbstractMap.SimpleEntry<BinanceWebsocketTransaction<DepthBinanceWebSocketTransaction>, BinanceWebsocketTransaction<DepthBinanceWebSocketTransaction>>
-                      > getAccumulator()
+                      > getPairAccumulator()
     {
       return new BiFunction<
           AbstractMap.SimpleEntry<BinanceWebsocketTransaction<DepthBinanceWebSocketTransaction>, BinanceWebsocketTransaction<DepthBinanceWebSocketTransaction>>, 
           BinanceWebsocketTransaction<DepthBinanceWebSocketTransaction>, 
           AbstractMap.SimpleEntry<BinanceWebsocketTransaction<DepthBinanceWebSocketTransaction>, BinanceWebsocketTransaction<DepthBinanceWebSocketTransaction>>
         >() {
-
-
         @Override
         public SimpleEntry<BinanceWebsocketTransaction<DepthBinanceWebSocketTransaction>, BinanceWebsocketTransaction<DepthBinanceWebSocketTransaction>> apply(
             SimpleEntry<BinanceWebsocketTransaction<DepthBinanceWebSocketTransaction>, BinanceWebsocketTransaction<DepthBinanceWebSocketTransaction>> t1,
@@ -266,9 +264,9 @@ public class BinanceStreamingMarketDataService implements StreamingMarketDataSer
                 .scan( 
                     //() -> new AbstractMap.SimpleEntry<BinanceWebsocketTransaction<DepthBinanceWebSocketTransaction>, BinanceWebsocketTransaction<DepthBinanceWebSocketTransaction>>(null, null), 
                     new AbstractMap.SimpleEntry<BinanceWebsocketTransaction<DepthBinanceWebSocketTransaction>, BinanceWebsocketTransaction<DepthBinanceWebSocketTransaction>>(null, null), //1. initial value
-                    getAccumulator()
+                    getPairAccumulator()
                     )
-                .filter(pair -> pair != null && pair.getValue() != null)
+                .filter(pair -> pair != null && pair.getValue() != null) // Make sure we don't emit the initial value (for some reason scan does)
                 .doOnNext(pair -> {
                   if (pair.getKey() == null) {
                     //LOG.info("NULL");
@@ -283,11 +281,7 @@ public class BinanceStreamingMarketDataService implements StreamingMarketDataSer
                     if (currOrderBook.firstUpdateId != prevOrderBook.getOrderBook().lastUpdateId + 1) {
                       throw new ExchangeException("CurrencyPair: " + currencyPair + " Received 2 sequencial events with mismatching Final update ID and First update ID.");
                     }
-                    
-                    
                   }
-
-                  
                   
                 })
                 .map(pair -> transactionMapper.apply(pair.getValue(), currencyPair))
