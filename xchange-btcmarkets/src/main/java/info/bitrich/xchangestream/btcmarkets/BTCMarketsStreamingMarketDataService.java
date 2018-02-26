@@ -9,8 +9,11 @@ import java.security.NoSuchAlgorithmException;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.SSLContext;
@@ -20,21 +23,29 @@ import javax.net.ssl.TrustManagerFactory;
 import javax.net.ssl.X509TrustManager;
 
 import org.json.JSONObject;
+import org.knowm.xchange.btcmarkets.BTCMarketsAdapters;
+import org.knowm.xchange.btcmarkets.dto.marketdata.BTCMarketsOrderBook;
 import org.knowm.xchange.currency.Currency;
 import org.knowm.xchange.currency.CurrencyPair;
+import org.knowm.xchange.dto.Order;
 import org.knowm.xchange.dto.Order.OrderType;
 import org.knowm.xchange.dto.marketdata.OrderBook;
 import org.knowm.xchange.dto.marketdata.OrderBookUpdate;
 import org.knowm.xchange.dto.marketdata.Ticker;
 import org.knowm.xchange.dto.marketdata.Trade;
+import org.knowm.xchange.dto.trade.LimitOrder;
+import org.knowm.xchange.exceptions.ExchangeException;
 import org.knowm.xchange.exceptions.NotYetImplementedForExchangeException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
-
-
+import info.bitrich.xchangestream.btcmarkets.BTCMarketsStreamingMarketDataService.SubscriptionType;
+import info.bitrich.xchangestream.btcmarkets.dto.BTCMarketsOrderbookWebsocketUpdate;
 import info.bitrich.xchangestream.core.StreamingMarketDataService;
 import info.bitrich.xchangestream.service.exception.NotConnectedException;
 import io.reactivex.Observable;
@@ -59,19 +70,16 @@ public class BTCMarketsStreamingMarketDataService implements StreamingMarketData
   private static final Logger LOG = LoggerFactory.getLogger(BTCMarketsStreamingMarketDataService.class);
   
   private String serviceUrl;
+  
+  private final ObjectMapper mapper = new ObjectMapper();
+  
 
   public BTCMarketsStreamingMarketDataService(String serviceUrl) {
     this.serviceUrl = serviceUrl; 
+    mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
   }
 
-  @Override
-  public Observable<OrderBook> getOrderBook(CurrencyPair currencyPair, Object... args)
-  {
-    // TODO Auto-generated method stub
-    return null;
-  }
-
-  @Override
+   @Override
   public Observable<Ticker> getTicker(CurrencyPair currencyPair, Object... args)
   {
     throw new NotYetImplementedForExchangeException();
@@ -85,7 +93,7 @@ public class BTCMarketsStreamingMarketDataService implements StreamingMarketData
   
   
   //TODO: make private:
-  public static String channelFromCurrency(CurrencyPair currencyPair, SubscriptionType subscriptionType) {
+  private String channelFromCurrency(CurrencyPair currencyPair, SubscriptionType subscriptionType) {
     String base = currencyPair.base.toString().toUpperCase();
     String counter = currencyPair.counter.toString().toUpperCase();
     //String currency = String.join("", currencyPair.toString().split("/")).toUpperCase();
@@ -220,9 +228,31 @@ public class BTCMarketsStreamingMarketDataService implements StreamingMarketData
 //    }).share();
 //  }
 //----------------------------------------------------------------------------------------------------------------------
+  @Override
+  public Observable<OrderBook> getOrderBook(CurrencyPair currencyPair, Object... args)  {
+    
+    String channelName = channelFromCurrency(currencyPair, SubscriptionType.ORDERBOOK);
+    try
+    {
+      Socket socket = createSocket(channelName);
+      return createMessageListener(socket).map(orderbookTransaction -> adaptOrderBook(orderbookTransaction, currencyPair));
+    } catch (KeyManagementException | NoSuchAlgorithmException | URISyntaxException e)
+    {
+      // TODO Auto-generated catch block
+        //e.printStackTrace();
+        LOG.error("Error while trying to subscrive to socket.io",e);
+        
+        //TODO: -----------------------DEAL WITH THE ERROR ----------------------
+        //throw e;
+        //TODO: -----------------------DEAL WITH THE ERROR ----------------------
+        return null;
+        
+    }
+  }
+  
   //EXAMPLE: https://github.com/tehmou/android-chat-client-example/blob/master/app/src/main/java/com/tehmou/book/androidchatclient/ChatModel.java
-  public static Observable<String> createMessageListener(final Socket socket) {
-    return Observable.create(subscriber -> {
+  public Observable<BTCMarketsOrderbookWebsocketUpdate> createMessageListener(final Socket socket) {
+    return Observable.<String>create(subscriber -> {
         final Emitter.Listener listener =
                 args -> subscriber.onNext(args[0].toString());
         socket.on("OrderBookChange", listener);
@@ -233,11 +263,19 @@ public class BTCMarketsStreamingMarketDataService implements StreamingMarketData
 //                    Log.d(TAG, "unsubscribe");
 //                    socket.off("join", listener);
 //                }));
-    });
+    }).map((String s) -> orderbookTransaction(s));
   }
 //----------------------------------------------------------------------------------------------------------------------
-  
- public Socket test(String channelName) throws URISyntaxException, NoSuchAlgorithmException, KeyManagementException {
+  private BTCMarketsOrderbookWebsocketUpdate orderbookTransaction(String s) {
+    try {
+        return mapper.readValue(s, new TypeReference<BTCMarketsOrderbookWebsocketUpdate>() {});
+    } catch (IOException e) {
+      throw new ExchangeException("Unable to parse order book transaction", e);
+    }
+  }
+//----------------------------------------------------------------------------------------------------------------------
+  //TODO: refactor into service:
+ private Socket createSocket(String channelName) throws URISyntaxException, NoSuchAlgorithmException, KeyManagementException {
    X509TrustManager trustManager = getAllowAllTrustManager();
    
     SSLContext sslContext = SSLContext.getInstance("TLS");
@@ -311,5 +349,18 @@ public class BTCMarketsStreamingMarketDataService implements StreamingMarketData
     
     return socket;
   }
+ 
+ public static OrderBook adaptOrderBook(BTCMarketsOrderbookWebsocketUpdate btcmarketsOrderBookUpdate, CurrencyPair currencyPair) {
+   List<LimitOrder> asks = btcmarketsOrderBookUpdate.getAsks().stream()
+             .map(a -> new LimitOrder(Order.OrderType.ASK, a.amount, currencyPair, null, null, a.price)).collect(Collectors.toList());
+       
+       //createOrders(Order.OrderType.ASK, btcmarketsOrderBookUpdate.getAsks(), currencyPair);
+   List<LimitOrder> bids = btcmarketsOrderBookUpdate.getBids().stream()
+       .map(a -> new LimitOrder(Order.OrderType.BID, a.amount, currencyPair, null, null, a.price)).collect(Collectors.toList());
+       //createOrders(Order.OrderType.BID, btcmarketsOrderBookUpdate.getBids(), currencyPair);
+   Collections.sort(bids, BTCMarketsAdapters.BID_COMPARATOR);
+   Collections.sort(asks, BTCMarketsAdapters.ASK_COMPARATOR);
+   return new OrderBook(btcmarketsOrderBookUpdate.getTimestamp(), asks, bids);
+ }
 
 }

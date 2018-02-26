@@ -1,13 +1,25 @@
 package info.bitrich.xchangestream.btcmarkets.dto;
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import org.knowm.xchange.utils.jackson.BtcToSatoshi;
+import org.knowm.xchange.utils.jackson.SatoshiToBtc;
 
 import java.math.BigDecimal;
 
 
 @JsonFormat(shape = JsonFormat.Shape.ARRAY)
 public class BTCMarketsOrderBookLevel {
+    
+//  //All numbers, specifically for price and volume, must be converted to an integer for use in Trading API requests. The conversion is 100000000, or 1E8. 
+    @JsonSerialize(using = BtcToSatoshi.class)
+    @JsonDeserialize(using = SatoshiToBtc.class)
     public BigDecimal price;
+    
+    @JsonSerialize(using = BtcToSatoshi.class)
+    @JsonDeserialize(using = SatoshiToBtc.class)
     public BigDecimal amount;
+    
     public long streamId; //TODO: not sure what this ID actually is as it's undocumented
 
     public BTCMarketsOrderBookLevel() {
@@ -19,10 +31,12 @@ public class BTCMarketsOrderBookLevel {
         this.streamId = streamId;
     }
 
+    // Price in units of 10e-8
     public BigDecimal getPrice() {
         return price;
     }
 
+    // Amount in units of 10e-8
     public BigDecimal getAmount() {
         return amount;
     }
