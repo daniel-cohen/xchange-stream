@@ -61,23 +61,28 @@ import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
 
 public class BTCMarketsStreamingMarketDataService implements StreamingMarketDataService
 {
+  private static final Logger LOG = LoggerFactory.getLogger(BTCMarketsStreamingMarketDataService.class);
+  private SocketIOStreamingService service; 
+  private final ObjectMapper mapper = new ObjectMapper();
+  
+  private final String ORDERBOOK_CHANGE_EVENT_NAME = "OrderBookChange";
+  
+  public BTCMarketsStreamingMarketDataService(SocketIOStreamingService service) {
+    this.service= service; 
+    mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+  }
+
+  
   public enum SubscriptionType{
     ORDERBOOK,
     TICKER,
     TRADES
   }
   
-  private static final Logger LOG = LoggerFactory.getLogger(BTCMarketsStreamingMarketDataService.class);
   
-  private String serviceUrl;
   
-  private final ObjectMapper mapper = new ObjectMapper();
-  
+  //private String serviceUrl;
 
-  public BTCMarketsStreamingMarketDataService(String serviceUrl) {
-    this.serviceUrl = serviceUrl; 
-    mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-  }
 
    @Override
   public Observable<Ticker> getTicker(CurrencyPair currencyPair, Object... args)
@@ -89,6 +94,15 @@ public class BTCMarketsStreamingMarketDataService implements StreamingMarketData
   public Observable<Trade> getTrades(CurrencyPair currencyPair, Object... args)
   {
     throw new NotYetImplementedForExchangeException();
+  }
+  
+  
+  @Override
+  public Observable<OrderBook> getOrderBook(CurrencyPair currencyPair, Object... args)  {
+    String channelName = channelFromCurrency(currencyPair, SubscriptionType.ORDERBOOK);
+    return service.subscribeChannel(channelName, ORDERBOOK_CHANGE_EVENT_NAME)
+    .map(s-> orderbookTransaction(s))
+    .map(orderbookTransaction -> adaptOrderBook(orderbookTransaction, currencyPair));
   }
   
   
@@ -146,15 +160,11 @@ public class BTCMarketsStreamingMarketDataService implements StreamingMarketData
       @Override
       public void checkClientTrusted(X509Certificate[] chain, String authType) throws CertificateException
       {
-        // TODO Auto-generated method stub
-        
       }
 
       @Override
       public void checkServerTrusted(X509Certificate[] chain, String authType) throws CertificateException
       {
-        // TODO Auto-generated method stub
-        
       }
 
       @Override
@@ -200,7 +210,7 @@ public class BTCMarketsStreamingMarketDataService implements StreamingMarketData
       };
   }
 //----------------------------------------------------------------------------------------------------------------------
-  Socket socket;
+  //Socket socket;
 //  protected Map<String, Subscription> channels = new ConcurrentHashMap<>();
 //  
 //  public Observable<T> subscribeChannel(String channelName) {
@@ -228,43 +238,43 @@ public class BTCMarketsStreamingMarketDataService implements StreamingMarketData
 //    }).share();
 //  }
 //----------------------------------------------------------------------------------------------------------------------
-  @Override
-  public Observable<OrderBook> getOrderBook(CurrencyPair currencyPair, Object... args)  {
-    
-    String channelName = channelFromCurrency(currencyPair, SubscriptionType.ORDERBOOK);
-    try
-    {
-      Socket socket = createSocket(channelName);
-      return createMessageListener(socket).map(orderbookTransaction -> adaptOrderBook(orderbookTransaction, currencyPair));
-    } catch (KeyManagementException | NoSuchAlgorithmException | URISyntaxException e)
-    {
-      // TODO Auto-generated catch block
-        //e.printStackTrace();
-        LOG.error("Error while trying to subscrive to socket.io",e);
-        
-        //TODO: -----------------------DEAL WITH THE ERROR ----------------------
-        //throw e;
-        //TODO: -----------------------DEAL WITH THE ERROR ----------------------
-        return null;
-        
-    }
-  }
+  //@Override
+//  public Observable<OrderBook> getOrderBookXX(CurrencyPair currencyPair, Object... args)  {
+//    
+//    String channelName = channelFromCurrency(currencyPair, SubscriptionType.ORDERBOOK);
+//    try
+//    {
+//      Socket socket = createSocket(channelName);
+//      return createMessageListener(socket).map(orderbookTransaction -> adaptOrderBook(orderbookTransaction, currencyPair));
+//    } catch (KeyManagementException | NoSuchAlgorithmException | URISyntaxException e)
+//    {
+//      // TODO Auto-generated catch block
+//        //e.printStackTrace();
+//        LOG.error("Error while trying to subscrive to socket.io",e);
+//        
+//        //TODO: -----------------------DEAL WITH THE ERROR ----------------------
+//        //throw e;
+//        //TODO: -----------------------DEAL WITH THE ERROR ----------------------
+//        return null;
+//        
+//    }
+//  }
   
   //EXAMPLE: https://github.com/tehmou/android-chat-client-example/blob/master/app/src/main/java/com/tehmou/book/androidchatclient/ChatModel.java
-  public Observable<BTCMarketsOrderbookWebsocketUpdate> createMessageListener(final Socket socket) {
-    return Observable.<String>create(subscriber -> {
-        final Emitter.Listener listener =
-                args -> subscriber.onNext(args[0].toString());
-        socket.on("OrderBookChange", listener);
-       
-        //Do we need unsubscribe ?
-//        subscriber.add(BooleanSubscription.create(
-//                () -> {
-//                    Log.d(TAG, "unsubscribe");
-//                    socket.off("join", listener);
-//                }));
-    }).map((String s) -> orderbookTransaction(s));
-  }
+//  public Observable<BTCMarketsOrderbookWebsocketUpdate> createMessageListener(final Socket socket) {
+//    return Observable.<String>create(subscriber -> {
+//        final Emitter.Listener listener =
+//                args -> subscriber.onNext(args[0].toString());
+//        socket.on("OrderBookChange", listener);
+//       
+//        //Do we need unsubscribe ?
+////        subscriber.add(BooleanSubscription.create(
+////                () -> {
+////                    Log.d(TAG, "unsubscribe");
+////                    socket.off("join", listener);
+////                }));
+//    }).map((String s) -> orderbookTransaction(s));
+//  }
 //----------------------------------------------------------------------------------------------------------------------
   private BTCMarketsOrderbookWebsocketUpdate orderbookTransaction(String s) {
     try {
@@ -275,81 +285,81 @@ public class BTCMarketsStreamingMarketDataService implements StreamingMarketData
   }
 //----------------------------------------------------------------------------------------------------------------------
   //TODO: refactor into service:
- private Socket createSocket(String channelName) throws URISyntaxException, NoSuchAlgorithmException, KeyManagementException {
-   X509TrustManager trustManager = getAllowAllTrustManager();
-   
-    SSLContext sslContext = SSLContext.getInstance("TLS");
-    sslContext.init(null, new TrustManager[] {trustManager },  new java.security.SecureRandom());
-    
-    //https://stackoverflow.com/questions/25509296/trusting-all-certificates-with-okhttp
-    
-    //HostnameVerifier myHostnameVerifier = SSLConnectionSocketFactory.getDefaultHostnameVerifier();
-    HostnameVerifier myHostnameVerifier = GetAllAllowedHostnameVerifier();
-    
-    
-    OkHttpClient okHttpClient = new OkHttpClient.Builder()
-        .hostnameVerifier(myHostnameVerifier)
-        //.sslSocketFactory(sslContext.getSocketFactory(), getTrustManager())
-        .sslSocketFactory(sslContext.getSocketFactory(), getAllowAllTrustManager())
-        .build();
-
-      // default settings for all sockets
-      IO.setDefaultOkHttpWebSocketFactory(okHttpClient);
-      IO.setDefaultOkHttpCallFactory(okHttpClient);
-    
-      //TURN on extra logging:
-      java.util.logging.Logger.getLogger(OkHttpClient.class.getName()).setLevel(java.util.logging.Level.FINE);
-      
-   // set as an option
-    IO.Options opts = new IO.Options();
-    opts.callFactory = okHttpClient;
-    opts.webSocketFactory = okHttpClient;
-    opts.secure = true;
-    opts.transports = new String[] { "websocket" };
-   
-    
-    
-    Socket socket = IO.socket(serviceUrl, opts);
-    
-    
-    socket.on(Socket.EVENT_CONNECT, new Emitter.Listener() {
-
-      @Override
-      public void call(Object... args) {
-        LOG.info("Connected");
-        socket.emit("join", channelName);
-        //socket.disconnect();
-      }
-
-//    }).on("OrderBookChange", new Emitter.Listener() {
+// private Socket createSocket(String channelName) throws URISyntaxException, NoSuchAlgorithmException, KeyManagementException {
+//   X509TrustManager trustManager = getAllowAllTrustManager();
+//   
+//    SSLContext sslContext = SSLContext.getInstance("TLS");
+//    sslContext.init(null, new TrustManager[] {trustManager },  new java.security.SecureRandom());
+//    
+//    //https://stackoverflow.com/questions/25509296/trusting-all-certificates-with-okhttp
+//    
+//    //HostnameVerifier myHostnameVerifier = SSLConnectionSocketFactory.getDefaultHostnameVerifier();
+//    HostnameVerifier myHostnameVerifier = GetAllAllowedHostnameVerifier();
+//    
+//    
+//    OkHttpClient okHttpClient = new OkHttpClient.Builder()
+//        .hostnameVerifier(myHostnameVerifier)
+//        //.sslSocketFactory(sslContext.getSocketFactory(), getTrustManager())
+//        .sslSocketFactory(sslContext.getSocketFactory(), getAllowAllTrustManager())
+//        .build();
+//
+//      // default settings for all sockets
+//      IO.setDefaultOkHttpWebSocketFactory(okHttpClient);
+//      IO.setDefaultOkHttpCallFactory(okHttpClient);
+//    
+//      //TURN on extra logging:
+//      java.util.logging.Logger.getLogger(OkHttpClient.class.getName()).setLevel(java.util.logging.Level.FINE);
+//      
+//   // set as an option
+//    IO.Options opts = new IO.Options();
+//    opts.callFactory = okHttpClient;
+//    opts.webSocketFactory = okHttpClient;
+//    opts.secure = true;
+//    opts.transports = new String[] { "websocket" };
+//   
+//    
+//    
+//    Socket socket = IO.socket(serviceUrl, opts);
+//    
+//    
+//    socket.on(Socket.EVENT_CONNECT, new Emitter.Listener() {
 //
 //      @Override
 //      public void call(Object... args) {
-//        LOG.info("Got OrderBookChange");
-//        JSONObject obj = (JSONObject)args[0];
-//        
+//        LOG.info("Connected");
+//        socket.emit("join", channelName);
+//        //socket.disconnect();
 //      }
-
-    }).on(Socket.EVENT_DISCONNECT, new Emitter.Listener() {
-
-      @Override
-      public void call(Object... args) {
-        LOG.info("Disconnected");
-      }
-
-    }).on(Socket.EVENT_MESSAGE, new Emitter.Listener() {
-
-      @Override
-      public void call(Object... args) {
-        LOG.info("Message");
-      }
-
-    });
-    socket.connect();
-    
-    return socket;
-  }
- 
+//
+////    }).on("OrderBookChange", new Emitter.Listener() {
+////
+////      @Override
+////      public void call(Object... args) {
+////        LOG.info("Got OrderBookChange");
+////        JSONObject obj = (JSONObject)args[0];
+////        
+////      }
+//
+//    }).on(Socket.EVENT_DISCONNECT, new Emitter.Listener() {
+//
+//      @Override
+//      public void call(Object... args) {
+//        LOG.info("Disconnected");
+//      }
+//
+//    }).on(Socket.EVENT_MESSAGE, new Emitter.Listener() {
+//
+//      @Override
+//      public void call(Object... args) {
+//        LOG.info("Message");
+//      }
+//
+//    });
+//    socket.connect();
+//    
+//    return socket;
+//  }
+// 
  public static OrderBook adaptOrderBook(BTCMarketsOrderbookWebsocketUpdate btcmarketsOrderBookUpdate, CurrencyPair currencyPair) {
    List<LimitOrder> asks = btcmarketsOrderBookUpdate.getAsks().stream()
              .map(a -> new LimitOrder(Order.OrderType.ASK, a.amount, currencyPair, null, null, a.price)).collect(Collectors.toList());
