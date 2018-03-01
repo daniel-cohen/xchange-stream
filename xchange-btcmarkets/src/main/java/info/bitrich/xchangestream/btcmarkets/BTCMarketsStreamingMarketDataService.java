@@ -102,6 +102,12 @@ public class BTCMarketsStreamingMarketDataService implements StreamingMarketData
     String channelName = channelFromCurrency(currencyPair, SubscriptionType.ORDERBOOK);
     return service.subscribeChannel(channelName, ORDERBOOK_CHANGE_EVENT_NAME)
     .map(s-> orderbookTransaction(s))
+    .filter(s -> 
+    {    
+      LOG.debug("s.getCurrency()={} s.getInstrument()={} currencyPair.counter.getCurrencyCode()={} currencyPair.base.getCurrencyCode()={}", s.getCurrency(),s.getInstrument(), currencyPair.counter.getCurrencyCode(),currencyPair.base.getCurrencyCode());
+                  return s.getCurrency().equalsIgnoreCase(currencyPair.counter.getCurrencyCode())  
+                  && s.getInstrument().equalsIgnoreCase(currencyPair.base.getCurrencyCode());
+    })
     .map(orderbookTransaction -> adaptOrderBook(orderbookTransaction, currencyPair));
   }
   

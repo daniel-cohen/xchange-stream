@@ -32,7 +32,7 @@ public class BTCMarketStreamingExchange extends BTCMarketsExchange implements St
     } catch (KeyManagementException | NoSuchAlgorithmException | URISyntaxException e)
     {
       // TODO handle errors
-      LOG.error("TCMarketStreamingExchange() error", e);
+      LOG.error("BTCMarketStreamingExchange() error", e);
     }
   }
   

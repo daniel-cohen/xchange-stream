@@ -112,11 +112,8 @@ public class SocketIOStreamingService
     opts.webSocketFactory = okHttpClient;
     opts.secure = true;
     opts.transports = new String[] { "websocket" };
-   
-    
-    
-    this.socket = IO.socket(serviceUrl, opts);
 
+    this.socket = IO.socket(serviceUrl, opts);
   }
   
   public Completable connect() {
@@ -219,7 +216,17 @@ public class SocketIOStreamingService
                 final Emitter.Listener listener =
                     args -> 
                           {
-                            LOG.info("Event {} recieved with args[0] of type: {} ", eventName, args[0].getClass().getName());
+                            
+                            if (args.length == 0) {
+                              LOG.info("Event {} recieved with NO args", eventName);
+                              // no payload:
+                              subscriber.onNext(null);
+                              
+                            } else if (args.length > 0) {
+                              LOG.info("Event {} recieved with args[0] of type: {} ", eventName, args[0].getClass().getName());
+                              LOG.debug("Event {} recieved with args[0]: {} ", eventName, args[0].toString());
+                             }
+
                             subscriber.onNext(args[0].toString());
                           };
                     
