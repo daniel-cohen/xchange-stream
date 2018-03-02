@@ -23,7 +23,6 @@ public class BTCMarketsOrderbookWebsocketUpdate extends BTCMarketsWebsocketUpdat
   
   private long marketId;
   private long snapshotId;
-  private BTCMarketsOrderBook orderBook;
   
   // For now we don't need to return an orderbook object for EACH transaction. it's just a diff
   //private final BTCMarketsOrderBook orderBook;

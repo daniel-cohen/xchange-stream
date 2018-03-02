@@ -45,13 +45,13 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import info.bitrich.xchangestream.btcmarkets.BTCMarketsStreamingMarketDataService.SubscriptionType;
+import info.bitrich.xchangestream.btcmarkets.dto.BTCMarketWebsocketTrade;
+import info.bitrich.xchangestream.btcmarkets.dto.BTCMarketWebsocketTradesUpdate;
 import info.bitrich.xchangestream.btcmarkets.dto.BTCMarketsOrderbookWebsocketUpdate;
 import info.bitrich.xchangestream.core.StreamingMarketDataService;
 import info.bitrich.xchangestream.service.exception.NotConnectedException;
 import io.reactivex.Observable;
-
-
-
+import io.reactivex.functions.Function;
 import io.socket.client.IO;
 import io.socket.client.Socket;
 import io.socket.emitter.Emitter;
@@ -66,6 +66,7 @@ public class BTCMarketsStreamingMarketDataService implements StreamingMarketData
   private final ObjectMapper mapper = new ObjectMapper();
   
   private final String ORDERBOOK_CHANGE_EVENT_NAME = "OrderBookChange";
+  private final String MARKET_TRADE_EVENT_NAME = "MarketTrade";
   
   public BTCMarketsStreamingMarketDataService(SocketIOStreamingService service) {
     this.service= service; 
@@ -93,8 +94,20 @@ public class BTCMarketsStreamingMarketDataService implements StreamingMarketData
   @Override
   public Observable<Trade> getTrades(CurrencyPair currencyPair, Object... args)
   {
-    throw new NotYetImplementedForExchangeException();
+    String channelName = channelFromCurrency(currencyPair, SubscriptionType.TRADES);
+    return service.subscribeChannel(channelName, MARKET_TRADE_EVENT_NAME)
+    .map(s-> tradeEvent(s))
+    .filter(s -> 
+    {    
+      LOG.debug("s.getCurrency()={} s.getInstrument()={} currencyPair.counter.getCurrencyCode()={} currencyPair.base.getCurrencyCode()={}", s.getCurrency(),s.getInstrument(), currencyPair.counter.getCurrencyCode(),currencyPair.base.getCurrencyCode());
+                  return s.getCurrency().equalsIgnoreCase(currencyPair.counter.getCurrencyCode())  
+                  && s.getInstrument().equalsIgnoreCase(currencyPair.base.getCurrencyCode());
+    })
+    //.flatMap(trade -> Observable.from(adaptTrade(trade, currencyPair)));
+    .flatMapIterable(trade -> adaptTrade(trade, currencyPair));
+     
   }
+  
   
   
   @Override
@@ -126,41 +139,9 @@ public class BTCMarketsStreamingMarketDataService implements StreamingMarketData
         return "TRADE_" + base + counter;
         default:
           throw new UnsupportedOperationException(subscriptionType.toString());
-        
     }
-}
+  }
   
-//  private Observable<OrderBook> orderBookStream(CurrencyPair currencyPair) {
-//    return service.subscribeChannel(channelFromCurrency(currencyPair, SubscriptionType.ORDERBOOK))
-//            .map((JsonNode s) -> depthTransaction(s.toString()))
-//            .filter(transaction ->
-//                    transaction.getData().getCurrencyPair().equals(currencyPair) &&
-//                            transaction.getData().getEventType() == DEPTH_UPDATE)
-//            .map(transaction -> {
-//                DepthBinanceWebSocketTransaction depth = transaction.getData();
-//
-//                OrderBook currentOrderBook = orderbooks.computeIfAbsent(currencyPair, orderBook ->
-//                        new OrderBook(null, new ArrayList<>(), new ArrayList<>()));
-//
-//                BinanceOrderbook ob = depth.getOrderBook();
-//                ob.bids.forEach((key, value) -> currentOrderBook.update(new OrderBookUpdate(
-//                        OrderType.BID,
-//                        null,
-//                        currencyPair,
-//                        key,
-//                        depth.getEventTime(),
-//                        value)));
-//                ob.asks.forEach((key, value) -> currentOrderBook.update(new OrderBookUpdate(
-//                        OrderType.ASK,
-//                        null,
-//                        currencyPair,
-//                        key,
-//                        depth.getEventTime(),
-//                        value)));
-//                return currentOrderBook;
-//            });
-//}
-// 
   private static X509TrustManager getAllowAllTrustManager() {
     return new X509TrustManager() {
       @Override
@@ -215,72 +196,7 @@ public class BTCMarketsStreamingMarketDataService implements StreamingMarketData
       }
       };
   }
-//----------------------------------------------------------------------------------------------------------------------
-  //Socket socket;
-//  protected Map<String, Subscription> channels = new ConcurrentHashMap<>();
-//  
-//  public Observable<T> subscribeChannel(String channelName) {
-//    LOG.info("Subscribing to channel {}", channelName);
-//
-//    return Observable.<T>create(e -> {
-//        if (socket == null || !socket.connected()) {
-//            e.onError(new NotConnectedException());
-//        }
-//
-//        if (!channels.containsKey(channelId)) {
-//            Subscription newSubscription = new Subscription(e, channelName, args);
-//            channels.put(channelId, newSubscription);
-//            try {
-//              socket.emit("join", channelName);
-//            } catch (IOException throwable) {
-//                e.onError(throwable);
-//            }
-//        }
-//    }).doOnDispose(() -> {
-//        if (!channels.containsKey(channelId)) {
-//            sendMessage(getUnsubscribeMessage(channelId));
-//            channels.remove(channelId);
-//        }
-//    }).share();
-//  }
-//----------------------------------------------------------------------------------------------------------------------
-  //@Override
-//  public Observable<OrderBook> getOrderBookXX(CurrencyPair currencyPair, Object... args)  {
-//    
-//    String channelName = channelFromCurrency(currencyPair, SubscriptionType.ORDERBOOK);
-//    try
-//    {
-//      Socket socket = createSocket(channelName);
-//      return createMessageListener(socket).map(orderbookTransaction -> adaptOrderBook(orderbookTransaction, currencyPair));
-//    } catch (KeyManagementException | NoSuchAlgorithmException | URISyntaxException e)
-//    {
-//      // TODO Auto-generated catch block
-//        //e.printStackTrace();
-//        LOG.error("Error while trying to subscrive to socket.io",e);
-//        
-//        //TODO: -----------------------DEAL WITH THE ERROR ----------------------
-//        //throw e;
-//        //TODO: -----------------------DEAL WITH THE ERROR ----------------------
-//        return null;
-//        
-//    }
-//  }
-  
-  //EXAMPLE: https://github.com/tehmou/android-chat-client-example/blob/master/app/src/main/java/com/tehmou/book/androidchatclient/ChatModel.java
-//  public Observable<BTCMarketsOrderbookWebsocketUpdate> createMessageListener(final Socket socket) {
-//    return Observable.<String>create(subscriber -> {
-//        final Emitter.Listener listener =
-//                args -> subscriber.onNext(args[0].toString());
-//        socket.on("OrderBookChange", listener);
-//       
-//        //Do we need unsubscribe ?
-////        subscriber.add(BooleanSubscription.create(
-////                () -> {
-////                    Log.d(TAG, "unsubscribe");
-////                    socket.off("join", listener);
-////                }));
-//    }).map((String s) -> orderbookTransaction(s));
-//  }
+
 //----------------------------------------------------------------------------------------------------------------------
   private BTCMarketsOrderbookWebsocketUpdate orderbookTransaction(String s) {
     try {
@@ -289,84 +205,16 @@ public class BTCMarketsStreamingMarketDataService implements StreamingMarketData
       throw new ExchangeException("Unable to parse order book transaction", e);
     }
   }
+  //----------------------------------------------------------------------------------------------------------------------
+  public BTCMarketWebsocketTradesUpdate tradeEvent(String s) {
+    try {
+        return mapper.readValue(s, new TypeReference<BTCMarketWebsocketTradesUpdate>() {});
+    } catch (IOException e) {
+      throw new ExchangeException("Unable to parse order trade  event", e);
+    }
+  }  
 //----------------------------------------------------------------------------------------------------------------------
-  //TODO: refactor into service:
-// private Socket createSocket(String channelName) throws URISyntaxException, NoSuchAlgorithmException, KeyManagementException {
-//   X509TrustManager trustManager = getAllowAllTrustManager();
-//   
-//    SSLContext sslContext = SSLContext.getInstance("TLS");
-//    sslContext.init(null, new TrustManager[] {trustManager },  new java.security.SecureRandom());
-//    
-//    //https://stackoverflow.com/questions/25509296/trusting-all-certificates-with-okhttp
-//    
-//    //HostnameVerifier myHostnameVerifier = SSLConnectionSocketFactory.getDefaultHostnameVerifier();
-//    HostnameVerifier myHostnameVerifier = GetAllAllowedHostnameVerifier();
-//    
-//    
-//    OkHttpClient okHttpClient = new OkHttpClient.Builder()
-//        .hostnameVerifier(myHostnameVerifier)
-//        //.sslSocketFactory(sslContext.getSocketFactory(), getTrustManager())
-//        .sslSocketFactory(sslContext.getSocketFactory(), getAllowAllTrustManager())
-//        .build();
-//
-//      // default settings for all sockets
-//      IO.setDefaultOkHttpWebSocketFactory(okHttpClient);
-//      IO.setDefaultOkHttpCallFactory(okHttpClient);
-//    
-//      //TURN on extra logging:
-//      java.util.logging.Logger.getLogger(OkHttpClient.class.getName()).setLevel(java.util.logging.Level.FINE);
-//      
-//   // set as an option
-//    IO.Options opts = new IO.Options();
-//    opts.callFactory = okHttpClient;
-//    opts.webSocketFactory = okHttpClient;
-//    opts.secure = true;
-//    opts.transports = new String[] { "websocket" };
-//   
-//    
-//    
-//    Socket socket = IO.socket(serviceUrl, opts);
-//    
-//    
-//    socket.on(Socket.EVENT_CONNECT, new Emitter.Listener() {
-//
-//      @Override
-//      public void call(Object... args) {
-//        LOG.info("Connected");
-//        socket.emit("join", channelName);
-//        //socket.disconnect();
-//      }
-//
-////    }).on("OrderBookChange", new Emitter.Listener() {
-////
-////      @Override
-////      public void call(Object... args) {
-////        LOG.info("Got OrderBookChange");
-////        JSONObject obj = (JSONObject)args[0];
-////        
-////      }
-//
-//    }).on(Socket.EVENT_DISCONNECT, new Emitter.Listener() {
-//
-//      @Override
-//      public void call(Object... args) {
-//        LOG.info("Disconnected");
-//      }
-//
-//    }).on(Socket.EVENT_MESSAGE, new Emitter.Listener() {
-//
-//      @Override
-//      public void call(Object... args) {
-//        LOG.info("Message");
-//      }
-//
-//    });
-//    socket.connect();
-//    
-//    return socket;
-//  }
-// 
- public static OrderBook adaptOrderBook(BTCMarketsOrderbookWebsocketUpdate btcmarketsOrderBookUpdate, CurrencyPair currencyPair) {
+  public static OrderBook adaptOrderBook(BTCMarketsOrderbookWebsocketUpdate btcmarketsOrderBookUpdate, CurrencyPair currencyPair) {
    List<LimitOrder> asks = btcmarketsOrderBookUpdate.getAsks().stream()
              .map(a -> new LimitOrder(Order.OrderType.ASK, a.amount, currencyPair, null, null, a.price)).collect(Collectors.toList());
        
@@ -378,5 +226,12 @@ public class BTCMarketsStreamingMarketDataService implements StreamingMarketData
    Collections.sort(asks, BTCMarketsAdapters.ASK_COMPARATOR);
    return new OrderBook(btcmarketsOrderBookUpdate.getTimestamp(), asks, bids);
  }
+  
+  public static List<Trade> adaptTrade(BTCMarketWebsocketTradesUpdate btcmarketsTrade, CurrencyPair currencyPair) {
+    
+    //TODO: why do I need the type ?
+    return btcmarketsTrade.getTrades().stream().map
+        (t -> new Trade(OrderType.BID, t.amount, currencyPair, t.price, t.timestamp, String.valueOf(t.tid))).collect(Collectors.toList());     
+  }
 
 }
