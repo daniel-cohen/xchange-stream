@@ -130,12 +130,13 @@ public class SocketIOStreamingService
         @Override
         public void call(Object... args) {
           Object arg = args[0];
-          LOG.info("Socket.io Error while listening :{} arg:{}", serviceUrl,  (arg != null ? arg.toString() : ""));
+          LOG.error("Socket.io Error while listening :{} arg:{}", serviceUrl,  (arg != null ? arg.toString() : ""));
 
-          //todo: is this a string ?
-          if (arg.getClass().isInstance(Throwable.class)) {
+          //TODO: is this a string ?
+          if (arg instanceof Throwable) {
+            LOG.error("Socket.io Error while listening.", (Throwable)arg);
             e.onError(new SocketIOException((Throwable)arg));
-          } else if (arg.getClass().isInstance(String.class)) {
+          } else if (arg instanceof String) {
               e.onError(new SocketIOException((String)arg));
           } else {
             e.onError(new SocketIOException(arg.toString()));
@@ -146,12 +147,12 @@ public class SocketIOStreamingService
         @Override
         public void call(Object... args) {
           Object arg = args[0];
-          LOG.info("Error while trying to connect to:{} arg:{}", serviceUrl,  (arg != null ? arg.toString() : ""));
+          LOG.error("Error while trying to connect to:{} arg:{}", serviceUrl,  (arg != null ? arg.toString() : ""));
 
-          if (arg.getClass().isInstance(Throwable.class)) {
+          if (arg instanceof Throwable) {
             e.onError(new SocketIOException((Throwable)arg));
-          } else if (arg.getClass().isInstance(String.class)) {
-              e.onError(new SocketIOException((String)arg));
+          } else if (arg instanceof String) {
+            e.onError(new SocketIOException((String)arg));
           } else {
             e.onError(new SocketIOException(arg.toString()));
           }
@@ -173,6 +174,9 @@ public class SocketIOStreamingService
         public void call(Object... args) {
           //TODO: Maybe change the isLive state to false
           LOG.info("reonnected");
+          
+          //TODO: here or on connet (which seems to happen after re-connect anyway:
+          // need to: re-subscribe to everything we were subscribed to.
         }
       });
     });
