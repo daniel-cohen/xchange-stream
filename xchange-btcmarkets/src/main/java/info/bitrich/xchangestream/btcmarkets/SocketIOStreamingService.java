@@ -6,9 +6,11 @@ import java.security.NoSuchAlgorithmException;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 import javax.net.ssl.HostnameVerifier;
@@ -21,7 +23,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import info.bitrich.xchangestream.service.exception.NotConnectedException;
-import info.bitrich.xchangestream.service.netty.NettyStreamingService.Subscription;
+
 import io.reactivex.Completable;
 import io.reactivex.Observable;
 import io.socket.client.IO;
@@ -87,7 +89,7 @@ public class SocketIOStreamingService
   
   private final Socket socket;
   private String serviceUrl;
-  protected Map<String, Subscription> channels = new ConcurrentHashMap<>();
+  protected Set<String> channels = ConcurrentHashMap.newKeySet();
 
   public SocketIOStreamingService(String serviceUrl) throws URISyntaxException, NoSuchAlgorithmException, KeyManagementException {
     this.serviceUrl = serviceUrl;
@@ -223,9 +225,13 @@ public class SocketIOStreamingService
           {
             if (socket.connected()) {
               //Only join the channel once:
-              socket.emit("join", channelName);
+              if (!channels.contains(channelName)) {
+                LOG.info("Joining channel:{}", channelName);
+                socket.emit("join", channelName);
+                channels.add(channelName);
+              }
               
-              
+              //TODO: maybe do something similar to "NettyStreamingService" and save the subsciptions
               for(String eventName: eventsName){
                 final Emitter.Listener listener =
                     args -> 
@@ -260,7 +266,8 @@ public class SocketIOStreamingService
   
   public void resubscribeChannels() {
     // we're already listening to incoming events, we just need to join the channels again:
-    for (String channelName : channels.keySet()) {
+    for (String channelName : channels) {
+      LOG.info("Joining channel:{}", channelName);
       socket.emit("join", channelName);
     }
   }
