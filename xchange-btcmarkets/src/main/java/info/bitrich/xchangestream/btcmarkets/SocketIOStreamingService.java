@@ -8,6 +8,8 @@ import java.security.cert.X509Certificate;
 import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.SSLContext;
@@ -19,6 +21,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import info.bitrich.xchangestream.service.exception.NotConnectedException;
+import info.bitrich.xchangestream.service.netty.NettyStreamingService.Subscription;
 import io.reactivex.Completable;
 import io.reactivex.Observable;
 import io.socket.client.IO;
@@ -84,6 +87,7 @@ public class SocketIOStreamingService
   
   private final Socket socket;
   private String serviceUrl;
+  protected Map<String, Subscription> channels = new ConcurrentHashMap<>();
 
   public SocketIOStreamingService(String serviceUrl) throws URISyntaxException, NoSuchAlgorithmException, KeyManagementException {
     this.serviceUrl = serviceUrl;
@@ -108,11 +112,16 @@ public class SocketIOStreamingService
     IO.setDefaultOkHttpCallFactory(okHttpClient);
     
     IO.Options opts = new IO.Options();
-    opts.callFactory = okHttpClient;
-    opts.webSocketFactory = okHttpClient;
+    
+    //TODO:TRY IT WITHOUT THE okHTTP SETTINGS
+//    opts.callFactory = okHttpClient;
+//    opts.webSocketFactory = okHttpClient;
+    
     opts.secure = true;
     opts.transports = new String[] { "websocket" };
 
+    
+    
     this.socket = IO.socket(serviceUrl, opts);
   }
   
@@ -177,6 +186,7 @@ public class SocketIOStreamingService
           
           //TODO: here or on connet (which seems to happen after re-connect anyway:
           // need to: re-subscribe to everything we were subscribed to.
+          resubscribeChannels();
         }
       });
     });
@@ -243,7 +253,16 @@ public class SocketIOStreamingService
               subscriber.onError(new NotConnectedException());
             }
       
-          }).doOnDispose(() -> listeners.forEach(l -> {socket.off(l.getEventName(), l.getListener());}));
+          }).doOnDispose(() -> listeners.forEach(l -> {socket.off(l.getEventName(), l.getListener());}))
+        .share();
+  }
+  
+  
+  public void resubscribeChannels() {
+    // we're already listening to incoming events, we just need to join the channels again:
+    for (String channelName : channels.keySet()) {
+      socket.emit("join", channelName);
+    }
   }
   
   public boolean isSocketOpen() {
