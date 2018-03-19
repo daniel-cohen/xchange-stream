@@ -37,6 +37,8 @@ public class ProductSubscription {
     }
 
     public static class ProductSubscriptionBuilder {
+      
+      //TODO: make sure the pairs are unique and that there's no duplication.
         private List<CurrencyPair> orderBook;
         private List<CurrencyPair> trades;
         private List<CurrencyPair> ticker;
